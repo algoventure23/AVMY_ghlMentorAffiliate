@@ -1,0 +1,95 @@
+const express = require('express');
+const puppeteer = require('puppeteer-extra');
+const StealthPlugin = require('puppeteer-extra-plugin-stealth');
+const cors = require('cors');
+const bodyParser = require('body-parser');
+const fs = require('fs');
+
+puppeteer.use(StealthPlugin());
+
+const app = express();
+const PORT = process.env.PORT || 3001;
+
+app.use(cors());
+app.use(bodyParser.json());
+
+const log = (message) => {
+  console.log(`[Puppeteer] ${message}`);
+  fs.appendFileSync('puppeteer.log', `${new Date().toISOString()} - ${message}\n`);
+};
+
+const userAgents = [
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/117.0.0.0 Safari/537.36',
+  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.1 Safari/605.1.15',
+  'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36'
+];
+
+// CRITICAL CHANGE: Ubuntu-optimized browser launch options
+const getBrowserOptions = () => {
+  const isUbuntu = process.platform === 'linux';
+  
+  if (isUbuntu) {
+    return {
+      headless: 'new', // Use new headless mode
+      executablePath: '/usr/bin/chromium-browser', // Explicit path
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-gpu',
+        '--disable-web-security',
+        '--disable-features=VizDisplayCompositor',
+        '--disable-blink-features=AutomationControlled',
+        '--disable-extensions',
+        '--no-first-run',
+        '--disable-default-apps',
+        '--disable-sync',
+        '--display=:99' // Use virtual display
+      ]
+    };
+  }
+  
+  // Windows/Mac options (for local development)
+  return {
+    headless: false,
+    args: [
+      '--no-sandbox',
+      '--disable-setuid-sandbox',
+      '--disable-blink-features=AutomationControlled'
+    ]
+  };
+};
+
+// Rest of your existing code with browser launch change:
+app.post('/click', async (req, res) => {
+  const { url, name = 'John Doe', email = 'demo@example.com', phone = '98553475', holdMs = 0, keepOpen = false, attributionGraceMs = 3000, selectors = {} } = req.body;
+  
+  if (!url) {
+    log('Missing URL in request');
+    return res.status(400).json({ error: 'Missing URL' });
+  }
+
+  log(`Visiting URL: ${url}`);
+  let browser;
+
+  try {
+    // Use the Ubuntu-optimized browser options
+    browser = await puppeteer.launch(getBrowserOptions());
+    
+    // ... rest of your existing code remains the same
+    
+  } catch (err) {
+    log(`❌ Error: ${err.message}`);
+    res.status(500).json({ success: false, error: err.message });
+  } finally {
+    if (browser && !keepOpen) {
+      await browser.close();
+      log('🧹 Browser closed');
+    }
+  }
+});
+
+app.listen(PORT, '0.0.0.0', () => {
+  log(`Puppeteer server running at http://0.0.0.0:${PORT}`);
+  log('Ubuntu headless mode with virtual display');
+});
